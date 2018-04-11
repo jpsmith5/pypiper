@@ -19,6 +19,8 @@ import signal
 import subprocess
 import sys
 import time
+import random
+import string
 
 from .AttributeDict import AttributeDict
 from .exceptions import PipelineHalt
@@ -788,7 +790,10 @@ class PipelineManager(object):
         # leave it together to use shell=True;
 
         if container:
-            cmd = "docker exec " + container + " " + cmd
+            if self.cmd_exists('docker'):
+                cmd = "docker exec " + container + " " + cmd
+            elif self.cmd_exists('singularity'):
+                cmd = "singularity exec instance://" + container + " " + cmd
         self._report_command(cmd)
         # self.proc_name = cmd[0] + " " + cmd[1]
         self.proc_name = "".join(cmd).split()[0]
@@ -1273,6 +1278,19 @@ class PipelineManager(object):
                 raise
 
 
+    def cmd_exists(self, cmd):
+        """
+        Returns success if an executable command exists.
+
+        :param cmd: The command to search for.
+        :type cmd: str
+        """
+        return any(
+            os.access(os.path.join(path, cmd), os.X_OK) 
+            for path in os.environ["PATH"].split(os.pathsep)
+        )
+
+
     ###################################
     # Pipeline stats calculation helpers
     ###################################
@@ -1647,28 +1665,65 @@ class PipelineManager(object):
 
 
     def atexit_register(self, *args):
-        """ Convenience alias to register exit functions without having to import atexit in the pipeline. """
+        """ 
+        Convenience alias to register exit functions without having to 
+        import atexit in the pipeline. 
+        """
         atexit.register(*args)
 
 
+    def id_generator(self, size=6, chars=string.ascii_uppercase):
+        """
+        Produce random six character string to name instances.
+        """
+        return ''.join(random.choice(chars) for _ in range(size)) 
+
+
     def get_container(self, image, mounts):
-        # image is something like "nsheff/refgenie"
-        if type(mounts) == str:
-            mounts = [mounts]
-        cmd = "docker run -itd"
-        for mnt in mounts:
-            absmnt = os.path.abspath(mnt)
-            cmd += " -v " + absmnt + ":" + absmnt
-        cmd += " " + image
-        container = self.checkprint(cmd).rstrip()
-        self.container = container
-        print("Using docker container: " + container)
+        # image is something like "nsheff/refgenie"        
+        if self.cmd_exists('docker'):
+            if type(mounts) == str:
+                mounts = [mounts]
+            cmd = "docker run -itd"
+            for mnt in mounts:
+                absmnt = os.path.abspath(mnt)
+                cmd += " -v " + absmnt + ":" + absmnt
+            cmd += " " + image
+            container = self.checkprint(cmd).rstrip()
+            self.container = container
+            print("Using docker container: " + container)
+        elif self.cmd_exists('singularity'):
+            f_name = image.rsplit('/', 1)[-1]
+            # Either confirm presence or download and build image
+            if not os.path.isfile(f_name):
+                cmd = "singularity build"
+                cmd += " " + f_name + " " + "docker://" + image
+                # execute the command to download image
+                self.callprint(cmd)
+            # generate random name for singularity instance
+            i_name = self.id_generator(6)           
+            if type(mounts) == str:
+                mounts = [mounts]
+            cmd = "singularity instance.start"
+            for mnt in mounts:
+                absmnt = os.path.abspath(mnt)
+                cmd += " " + "--bind " + absmnt + ":" + absmnt
+            cmd += " " + str(f_name) + " " + str(i_name)
+            container = self.checkprint(cmd).rstrip()
+            if container == '':
+                container = str(i_name)
+            self.container = container
+            print("Using singularity (docker) container: " + container)
         self.atexit_register(self.remove_container, container)
 
 
     def remove_container(self, container):
-        print("Removing docker container...")
-        cmd = "docker rm -f " + container
+        if self.cmd_exists('docker'):
+            print("Removing docker container...")
+            cmd = "docker rm -f " + container
+        elif self.cmd_exists('singularity'):
+            print("Removing singularity container...")
+            cmd = "singularity instance.stop " + container
         self.callprint(cmd)
 
 
@@ -1805,7 +1860,7 @@ class PipelineManager(object):
         :param category: Memory type to check. 'hwm' for high water mark.
         :type category: str
         """
-        if container:
+        if container and self.cmd_exists('docker'):
             # TODO: Put some debug output here with switch to Logger
             # since this is relatively untested.
             cmd = "docker stats " + container + " --format '{{.MemUsage}}' --no-stream"
