@@ -1710,7 +1710,7 @@ class PipelineManager(object):
                 cmd += " " + "--bind " + absmnt + ":" + absmnt
             cmd += " " + str(f_name) + " " + str(i_name)
             container = self.checkprint(cmd).rstrip()
-            if container == '':
+            if container is not i_name:
                 container = str(i_name)
             self.container = container
             print("Using singularity (docker) container: " + container)
