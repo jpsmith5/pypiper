@@ -334,7 +334,7 @@ class NGSTk(_AttributeDict):
                 self.pm.run(
                     "ln -sf " + input_arg + " " + local_input_abs,
                     target=local_input_abs,
-                    shell=True)
+                    shell=True, container=self.pm.container)
                 # return the local (linked) filename absolute path
                 return local_input_abs
 
@@ -346,9 +346,10 @@ class NGSTk(_AttributeDict):
                     sample_merged = local_base + ".merged.bam"
                     output_merge = os.path.join(raw_folder, sample_merged)
                     cmd = self.merge_bams(input_args, output_merge)
-                    self.pm.run(cmd, output_merge)
+                    self.pm.run(cmd, output_merge, container=self.pm.container)
                     cmd2 = self.validate_bam(output_merge)
-                    self.pm.run(cmd, output_merge, nofail=True)
+                    self.pm.run(cmd, output_merge, nofail=True,
+                                container=self.pm.container)
                     return output_merge
 
                 # if multiple fastq
@@ -357,17 +358,18 @@ class NGSTk(_AttributeDict):
                     output_merge_gz = os.path.join(raw_folder, sample_merged_gz)
                     #cmd1 = self.ziptool + "-d -c " + " ".join(input_args) + " > " + output_merge
                     #cmd2 = self.ziptool + " " + output_merge
-                    #self.pm.run([cmd1, cmd2], output_merge_gz)
+                    #self.pm.run([cmd1, cmd2], output_merge_gz, 
+                    #            container=self.pm.container)
                     # you can save yourself the decompression/recompression:
                     cmd = "cat " + " ".join(input_args) + " > " + output_merge_gz 
-                    self.pm.run(cmd, output_merge_gz)
+                    self.pm.run(cmd, output_merge_gz, container=self.pm.container)
                     return output_merge_gz
 
                 if all([self.get_input_ext(x) == ".fastq" for x in input_args]):
                     sample_merged = local_base + ".merged.fastq"
                     output_merge = os.path.join(raw_folder, sample_merged)
                     cmd = "cat " + " ".join(input_args) + " > " + output_merge
-                    self.pm.run(cmd, output_merge)
+                    self.pm.run(cmd, output_merge, container=self.pm.container)
                     return output_merge
 
                 # At this point, we don't recognize the input file types or they
@@ -428,7 +430,8 @@ class NGSTk(_AttributeDict):
                 print("Found .bam file")
                 #cmd = self.bam_to_fastq(input_file, fastq_prefix, paired_end)
                 cmd, fq1, fq2 = self.bam_to_fastq_awk(input_file, fastq_prefix, paired_end)
-                # pm.run(cmd, output_file, follow=check_fastq)
+                # pm.run(cmd, output_file, follow=check_fastq, 
+                #        container=self.pm.container)
             elif input_ext == ".fastq.gz":
                 print("Found .fastq.gz file")
                 if paired_end and not multiclass:
@@ -556,10 +559,12 @@ class NGSTk(_AttributeDict):
                 if fastqc_folder and os.path.isabs(fastqc_folder):
                     self.make_sure_path_exists(fastqc_folder)
                 cmd = self.fastqc(trimmed_fastq, fastqc_folder)
-                self.pm.run(cmd, lock_name="trimmed_fastqc", nofail=True)
+                self.pm.run(cmd, lock_name="trimmed_fastqc", nofail=True,
+                            container=self.pm.container)
                 if paired_end and trimmed_fastq_R2:
                     cmd = self.fastqc(trimmed_fastq_R2, fastqc_folder)
-                    self.pm.run(cmd, lock_name="trimmed_fastqc_R2", nofail=True)
+                    self.pm.run(cmd, lock_name="trimmed_fastqc_R2", 
+                                nofail=True, container=self.pm.container)
 
         return temp_func
 
