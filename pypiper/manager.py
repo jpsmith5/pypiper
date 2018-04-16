@@ -789,12 +789,15 @@ class PipelineManager(object):
         # Split the command to use shell=False;
         # leave it together to use shell=True;
 
+        # TODO: if running as shell in singularity, it won't capture the 
+        #       program name, only the "Invoking an interactive shell..."
+        self._report_command(cmd)
         if container:
             if self.cmd_exists('docker'):
-                cmd = "docker exec " + container + " " + cmd
+                cmd = "docker exec " + container + " \'" + cmd + "\'"
             elif self.cmd_exists('singularity'):
-                cmd = "singularity exec instance://" + container + " " + cmd
-        self._report_command(cmd)
+                cmd = ("singularity shell instance://" + container + " -c"
+                      " \"" + cmd + "\"")       
         # self.proc_name = cmd[0] + " " + cmd[1]
         self.proc_name = "".join(cmd).split()[0]
         proc_name = "".join(cmd).split()[0]
