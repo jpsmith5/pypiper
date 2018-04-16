@@ -788,22 +788,42 @@ class PipelineManager(object):
         # if shell=False, then we format the command (with split()) to be a list of command and its arguments.
         # Split the command to use shell=False;
         # leave it together to use shell=True;
+        likely_shell = check_shell(cmd)
 
-        # TODO: if running as shell in singularity, it won't capture the 
-        #       program name, only the "Invoking an interactive shell..."
-        self._report_command(cmd)
         if container:
             if self.cmd_exists('docker'):
-                cmd = "docker exec " + container + " \'" + cmd + "\'"
+                if likely_shell and "|" in str(cmd):
+                    cmd = cmd.split("|")
+                    cmd2 = ("docker exec " + container + " \'" +
+                            cmd[0] + "\'")
+                    i = 1
+                    while i < len(cmd):
+                        cmd2 += ("| " + "docker exec " + container + " \'" +
+                                 cmd[i] + "\'")
+                        i += 1
+                    cmd = cmd2
+                else:
+                    cmd = "docker exec " + container + " \'" + cmd + "\'"
             elif self.cmd_exists('singularity'):
-                cmd = ("singularity shell instance://" + container + " -c"
-                      " \"" + cmd + "\"")       
+                if likely_shell and "|" in str(cmd):
+                    cmd = cmd.split("|")
+                    cmd2 = ("singularity exec instance://" +
+                            container + " " + cmd[0])
+                    i = 1
+                    while i < len(cmd):
+                        cmd2 += ("| " + "singularity exec instance://" +
+                                 container + " " + cmd[i])
+                        i += 1
+                    cmd = cmd2
+                else:
+                    cmd = ("singularity exec instance://" +
+                           container + " " + cmd) 
+        # TODO: if running as shell in singularity, it won't capture the 
+        #       program name, only the "Invoking an interactive shell..."
+        self._report_command(cmd)                      
         # self.proc_name = cmd[0] + " " + cmd[1]
         self.proc_name = "".join(cmd).split()[0]
         proc_name = "".join(cmd).split()[0]
-
-
-        likely_shell = check_shell(cmd)
 
         if shell == "guess":
             shell = likely_shell
