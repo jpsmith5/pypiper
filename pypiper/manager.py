@@ -812,7 +812,7 @@ class PipelineManager(object):
                     i = 1
                     while i < len(cmd):
                         cmd2 += ("| " + "singularity exec instance://" +
-                                 container + " " + cmd[i])
+                                 container + cmd[i])
                         i += 1
                     cmd = cmd2
                 else:

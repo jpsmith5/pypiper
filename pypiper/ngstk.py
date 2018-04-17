@@ -820,7 +820,8 @@ class NGSTk(_AttributeDict):
         """
         cmd = "{} view {} {} {}".format(
                 self.tools.samtools, param, file_name, postpend)
-        return subprocess.check_output(cmd, shell=True)
+        return subprocess.check_output(cmd, shell=True,
+                                       container=self.pm.container)
 
 
     def count_reads(self, file_name, paired_end):
