@@ -818,10 +818,19 @@ class NGSTk(_AttributeDict):
             useful to add cut, sort, wc operations to the samtools view output.
         :type postpend: str
         """
-        cmd = "{} view {} {} {}".format(
-                self.tools.samtools, param, file_name, postpend)
-        return subprocess.check_output(cmd, shell=True,
-                                       container=self.pm.container)
+        if self.pm.container is not None:
+            if self.pm.cmd_exists('docker'):
+                cmd = ("docker exec {} \' {} view {} {} {} \'"
+                       .format(self.pm.container, self.tools.samtools, param, 
+                       file_name, postpend))
+            elif self.pm.cmd_exists('singularity'):
+                cmd = ("singularity exec instance://{} {} view {} {} {}"
+                       .format(self.pm.container, self.tools.samtools, param, 
+                       file_name, postpend))
+        else:
+            cmd = "{} view {} {} {}".format(
+                  self.tools.samtools, param, file_name, postpend)
+        return subprocess.check_output(cmd, shell=True)
 
 
     def count_reads(self, file_name, paired_end):

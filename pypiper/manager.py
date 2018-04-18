@@ -29,7 +29,7 @@ from .utils import \
     check_shell, checkpoint_filepath, clear_flags, flag_name, make_lock_name, \
     pipeline_filepath, CHECKPOINT_SPECIFICATIONS
 from ._version import __version__
-import __main__
+import __main__  # TODO: this breaks in pip 10.0.0
 
 
 __all__ = ["PipelineManager"]
