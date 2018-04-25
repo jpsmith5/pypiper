@@ -134,6 +134,41 @@ class NGSTk(_AttributeDict):
         else:
             return True
 
+            
+    def build_container_command(self, command):
+        """
+        Convert a command into an appropriate container verbiage
+        """
+        if self.pm.container is not None:
+            if self.pm.cmd_exists('docker'):
+                if "|" in str(command):
+                    command = command.split("|")
+                    cmd2 = ("docker exec " + self.pm.container + " \'" +
+                            command[0] + "\'")
+                    i = 1
+                    while i < len(command):
+                        cmd2 += ("| " + "docker exec " + self.pm.container +
+                                 " \'" + command[i] + "\'")
+                        i += 1
+                    command = cmd2
+                else:
+                    command = ("docker exec " + self.pm.container +
+                               " \'" + command + "\'")
+            elif self.pm.cmd_exists('singularity'):
+                if "|" in str(command):
+                    command = command.split("|")
+                    cmd2 = ("singularity exec instance://" +
+                            self.pm.container + " " + command[0])
+                    i = 1
+                    while i < len(command):
+                        cmd2 += ("| " + "singularity exec instance://" +
+                                 self.pm.container + command[i])
+                        i += 1
+                    command = cmd2
+                else:
+                    command = ("singularity exec instance://" +
+                               self.pm.container + " " + command)
+        return command
 
     def get_file_size(self, filenames):
         """
@@ -148,7 +183,12 @@ class NGSTk(_AttributeDict):
         # If given a list, recurse through it.
         if type(filenames) is list:
             return sum([self.get_file_size(filename) for filename in filenames])
-
+        # TODO: implement this entire step in container...
+        # cmd = (round(sum([float(os.stat(f).st_size) 
+        #        for f in filenames.split(" ")]) / (1024 ** 2), 4))
+        # if self.pm.container is not None:
+            # cmd = self.build_container_command(cmd)
+        # return cmd
         return round(sum([float(os.stat(f).st_size) for f in filenames.split(" ")]) / (1024 ** 2), 4)
 
 
@@ -658,7 +698,10 @@ class NGSTk(_AttributeDict):
         :param file_name: name of file whose lines are to be counted
         :type file_name: str
         """
-        x = subprocess.check_output("wc -l " + file_name + " | cut -f1 -d' '", shell=True)
+        cmd = ("wc -l " + file_name + " | cut -f1 -d' '")
+        if self.pm.container is not None:
+            cmd = self.build_container_command(cmd)
+        x = subprocess.check_output(cmd, shell=True)
         return x
 
     def count_lines_zip(self, file_name):
@@ -667,7 +710,10 @@ class NGSTk(_AttributeDict):
         For compressed files.
         :param file: file_name
         """
-        x = subprocess.check_output("zcat " + file_name + " | wc -l | cut -f1 -d' '", shell=True)
+        cmd = ("zcat " + file_name + " | wc -l | cut -f1 -d' '")
+        if self.pm.container is not None:
+            cmd = self.build_container_command(cmd)
+        x = subprocess.check_output(cmd, shell=True)
         return x
 
     def get_chrs_from_bam(self, file_name):
@@ -675,7 +721,11 @@ class NGSTk(_AttributeDict):
         Uses samtools to grab the chromosomes from the header that are contained
         in this bam file.
         """
-        x = subprocess.check_output(self.tools.samtools + " view -H " + file_name + " | grep '^@SQ' | cut -f2| sed s'/SN://'", shell=True)
+        cmd = (self.tools.samtools + " view -H " + file_name +
+               " | grep '^@SQ' | cut -f2| sed s'/SN://'")
+        if self.pm.container is not None:
+            cmd = self.build_container_command(cmd)
+        x = subprocess.check_output(cmd, shell=True)
         # Chromosomes will be separated by newlines; split into list to return
         return x.split()
 
@@ -818,18 +868,21 @@ class NGSTk(_AttributeDict):
             useful to add cut, sort, wc operations to the samtools view output.
         :type postpend: str
         """
+        cmd = (self.tools.samtools + " " + "view" + " " + param + " " +
+               file_name + " " + postpend)
         if self.pm.container is not None:
-            if self.pm.cmd_exists('docker'):
-                cmd = ("docker exec {} \' {} view {} {} {} \'"
-                       .format(self.pm.container, self.tools.samtools, param, 
-                       file_name, postpend))
-            elif self.pm.cmd_exists('singularity'):
-                cmd = ("singularity exec instance://{} {} view {} {} {}"
-                       .format(self.pm.container, self.tools.samtools, param, 
-                       file_name, postpend))
-        else:
-            cmd = "{} view {} {} {}".format(
-                  self.tools.samtools, param, file_name, postpend)
+            cmd = self.build_container_command(cmd)
+            # if self.pm.cmd_exists('docker'):
+                # cmd = ("docker exec {} \' {} view {} {} {} \'"
+                       # .format(self.pm.container, self.tools.samtools, param, 
+                       # file_name, postpend))
+            # elif self.pm.cmd_exists('singularity'):
+                # cmd = ("singularity exec instance://{} {} view {} {} {}"
+                       # .format(self.pm.container, self.tools.samtools, param, 
+                       # file_name, postpend))
+        # else:
+            # cmd = "{} view {} {} {}".format(
+                  # self.tools.samtools, param, file_name, postpend)
         return subprocess.check_output(cmd, shell=True)
 
 
@@ -1473,17 +1526,41 @@ class NGSTk(_AttributeDict):
 
 
     def simple_frip(self, input_bam, input_bed, threads=4):
-        cmd = "{} view".format(self.tools.samtools)
-        cmd += " -@ {} -c -L {}".format(threads, input_bed)
-        cmd += " " + input_bam
+        if self.pm.container is not None:
+            if self.pm.cmd_exists('docker'):
+                cmd = ("docker exec {} \' {} view -@ {} -c -L {} {} \'"
+                       .format(self.pm.container, self.tools.samtools, threads, 
+                       input_bed, input_bam))
+            elif self.pm.cmd_exists('singularity'):
+                cmd = ("singularity exec instance://{} {} view -@ {} -c -L {} {}"
+                       .format(self.pm.container, self.tools.samtools, threads, 
+                       input_bed, input_bam))
+        else:
+            cmd = "{} view".format(self.tools.samtools)
+            cmd += " -@ {} -c -L {}".format(threads, input_bed)
+            cmd += " " + input_bam
         return cmd
 
 
     def calculate_frip(self, input_bam, input_bed, output, cpus=4):
-        cmd = self.tools.sambamba + " depth region -t {0}".format(cpus)
-        cmd += " -L {0}".format(input_bed)
-        cmd += " {0}".format(input_bam)
-        cmd += " | awk '{{sum+=$5}} END {{print sum}}' > {0}".format(output)
+        if self.pm.container is not None:
+            if self.pm.cmd_exists('docker'):
+                cmd = ("docker exec {} \' {} depth region -t {0} -L {0} {0} "
+                       "\' | docker exec {} \' awk '{{sum+=$5}} END "
+                       "{{print sum}}' > {0}\'"
+                       .format(self.pm.container, self.tools.sambamba, cpus, 
+                       input_bed, input_bam, self.pm.container, output))
+            elif self.pm.cmd_exists('singularity'):
+                cmd = ("singularity exec instance://{} {} depth region -t {0} "
+                       "-L {0} {0} | singularity exec instance://{} "
+                       "awk '{{sum+=$5}} END {{print sum}}' > {0}"
+                       .format(self.pm.container, self.tools.sambamba, cpus, 
+                       input_bed, input_bam, self.pm.container, output))
+        else:
+            cmd = self.tools.sambamba + " depth region -t {0}".format(cpus)
+            cmd += " -L {0}".format(input_bed)
+            cmd += " {0}".format(input_bam)
+            cmd += " | awk '{{sum+=$5}} END {{print sum}}' > {0}".format(output)
         return cmd
 
 

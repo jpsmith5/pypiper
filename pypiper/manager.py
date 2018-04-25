@@ -790,7 +790,7 @@ class PipelineManager(object):
         # leave it together to use shell=True;
         likely_shell = check_shell(cmd)
 
-        if container:
+        if container is not None:
             if self.cmd_exists('docker'):
                 if likely_shell and "|" in str(cmd):
                     cmd = cmd.split("|")
